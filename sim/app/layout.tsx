@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { createLogger } from '@/lib/logs/console-logger'
 import './globals.css'
 import { ZoomPrevention } from './zoom-prevention'
+import ChatBot from '@/components/ui/mcp-chatbot'
 
 const logger = createLogger('RootLayout')
 
@@ -74,6 +75,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body suppressHydrationWarning>
         <ZoomPrevention />
         {children}
+        <ChatBot />
       </body>
     </html>
   )
