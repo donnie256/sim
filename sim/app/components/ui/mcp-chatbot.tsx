@@ -29,7 +29,10 @@ export default function ChatBot() {
       const res = await fetch('http://localhost:8000/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: input }),
+        body: JSON.stringify({
+          message: input,
+          model: "mistralai/mistral-small-3.1-24b-instruct:free", 
+        }),
       })
 
       if (!res.ok) {
