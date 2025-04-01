@@ -9,22 +9,14 @@ import os
 from dotenv import load_dotenv
 
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # ✅ TEMPORARY FIX for local dev
-
 load_dotenv()
 
 router = APIRouter()
-
-# TEMP storage: Replace with persistent storage in production
 USER_TOKENS = {}
-
-# Required Gmail OAuth scope
 SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
 
 @router.get("/auth/google")
 def auth_google():
-    print("🔁 /auth/google route hit")
-
-    # Validate required environment variables
     client_id = os.getenv("GOOGLE_CLIENT_ID")
     client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
     redirect_uri = os.getenv("GOOGLE_REDIRECT_URI")
@@ -32,10 +24,6 @@ def auth_google():
     if not all([client_id, client_secret, redirect_uri]):
         return {"error": "Missing Google OAuth environment variables."}
 
-    # Allow HTTP for local development
-    os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
-
-    # Create the flow
     flow = Flow.from_client_config(
         {
             "web": {
@@ -51,10 +39,7 @@ def auth_google():
     )
 
     auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline', include_granted_scopes='true')
-
-    print(f"🔗 Redirecting to Google OAuth: {auth_url}")
     return RedirectResponse(auth_url)
-
 
 @router.get("/auth/google/callback")
 def auth_callback(request: Request):
@@ -73,10 +58,8 @@ def auth_callback(request: Request):
     )
 
     flow.fetch_token(authorization_response=str(request.url))
-
     credentials = flow.credentials
 
-    # Store token temporarily — you can tie this to a user ID later
     USER_TOKENS["demo-user"] = {
         "token": credentials.token,
         "refresh_token": credentials.refresh_token,
@@ -88,22 +71,35 @@ def auth_callback(request: Request):
 
     return JSONResponse({"message": "Gmail connected successfully."})
 
-@router.post("/mcp/gmail/send")
-def send_email_via_gmail(payload: dict):
+# ✅ NEW REUSABLE INTERNAL FUNCTION
+
+def send_email_internal(to: str, subject: str, body: str) -> str:
     creds_data = USER_TOKENS.get("demo-user")
     if not creds_data:
-        return JSONResponse(status_code=403, content={"error": "User not authenticated"})
+        raise Exception("User not authenticated")
 
     creds = Credentials(**creds_data)
     service = build("gmail", "v1", credentials=creds)
 
-    message = MIMEText(payload.get("body", ""))
-    message["to"] = payload.get("to")
-    message["subject"] = payload.get("subject", "From your AI agent")
+    message = MIMEText(body)
+    message["to"] = to
+    message["subject"] = subject
 
     raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
     send_message = {"raw": raw}
 
     result = service.users().messages().send(userId="me", body=send_message).execute()
+    return result["id"]
 
-    return {"message": "Email sent!", "id": result["id"]}
+# MCP-compatible route (still works externally)
+@router.post("/mcp/gmail/send")
+def send_email_via_gmail(payload: dict):
+    try:
+        email_id = send_email_internal(
+            to=payload.get("to"),
+            subject=payload.get("subject"),
+            body=payload.get("body", "")
+        )
+        return {"message": "Email sent!", "id": email_id}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
